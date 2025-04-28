@@ -40,6 +40,9 @@
   <div class="transcript-text">
     {#if $transcribedData}
       {#if $transcribedData.isBusy}
+        <div class="progress-container">
+          <div class="progress-bar"></div>
+        </div>
         <p><em>Transcribing... (partial result)</em></p>
       {/if}
       {#if $transcribedData.text}
@@ -101,5 +104,29 @@
   }
   .transcript-text em {
     color: #888;
+  }
+  .progress-container {
+    width: 100%;
+    max-width: 600px;
+    height: 8px;
+    background: #e5e7eb;
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 1rem 0 0.5rem 0;
+  }
+  .progress-bar {
+    width: 40%;
+    height: 100%;
+    background: linear-gradient(90deg, #6366f1 0%, #60a5fa 100%);
+    border-radius: 4px;
+    animation: progress-indeterminate 1.2s infinite linear;
+  }
+  @keyframes progress-indeterminate {
+    0% {
+      margin-left: -40%;
+    }
+    100% {
+      margin-left: 100%;
+    }
   }
 </style>
