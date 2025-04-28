@@ -37,8 +37,6 @@
 </script>
 
 <div class="transcript">
-  <button on:click={exportTXT}>Export TXT</button>
-  <button on:click={exportJSON}>Export JSON</button>
   <div class="transcript-text">
     {#if $transcribedData}
       {#if $transcribedData.isBusy}
@@ -47,34 +45,61 @@
       {#if $transcribedData.text}
         <p>{$transcribedData.text}</p>
       {/if}
-      <!-- {#if $transcribedData.chunks && $transcribedData.chunks.length > 0}
-        <ul>
-          {#each $transcribedData.chunks as chunk}
-            <li>
-              [{chunk.timestamp[0]} - {chunk.timestamp[1] ?? "end"}] {chunk.text}
-            </li>
-          {/each}
-        </ul>
-      {/if} -->
     {:else}
       <p>No transcript yet.</p>
     {/if}
   </div>
+  {#if $transcribedData && !$transcribedData.isBusy && $transcribedData.text}
+    <div class="transcript-actions">
+      <button on:click={exportTXT} class="file-upload-btn">Export TXT</button>
+      <button on:click={exportJSON} class="file-upload-btn ml-2"
+        >Export JSON</button
+      >
+    </div>
+  {/if}
 </div>
 
 <style>
   .transcript {
     width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .transcript-actions {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .file-upload-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.6em 1.2em;
+    font-size: 1em;
+    font-weight: 500;
+    border-radius: 8px;
+    border: 1px solid #646cff;
+    background: #1a1a1a;
+    color: #fff;
+    cursor: pointer;
+    transition: border-color 0.25s;
+  }
+  .file-upload-btn:hover {
+    border-color: #747bff;
+    background: #2323a3;
+  }
+  .ml-2 {
+    margin-left: 0.5rem;
   }
   .transcript-text {
-    margin-top: 1rem;
+    /* margin-top: 1rem; */
+    width: 100%;
+    max-width: 600px;
+    text-align: left;
+    color: #374151;
   }
   .transcript-text em {
     color: #888;
   }
-  /* .transcript-text ul {
-    margin: 0.5rem 0 0 1rem;
-    padding: 0;
-    font-size: 0.95em;
-  } */
 </style>

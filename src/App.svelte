@@ -1,34 +1,65 @@
 <script lang="ts">
-  import AudioManager from './lib/AudioManager.svelte';
-  import { createTranscriber } from './lib/transcriber';
+  import AudioManager from "./lib/AudioManager.svelte";
+  import { createTranscriber } from "./lib/transcriber";
   const transcriber = createTranscriber();
 </script>
 
-<main>
-  <div class="container">
-    <h1 class="text-5xl font-extrabold tracking-tight text-slate-900 sm:text-7xl text-center">
-      Whisper Web
-    </h1>
-    <h2 class="mt-3 mb-5 px-4 text-center text-1xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
+<main class="app-root">
+  <header class="header">
+    <h1 class="main-title">Whisper Web</h1>
+    <h2 class="main-subtitle">
       ML-powered speech recognition directly in your browser
     </h2>
+  </header>
+  <section class="main-content">
     <AudioManager {transcriber} />
-    <div class="absolute bottom-4">
-      Made with <a class="underline" href="https://github.com/xenova/transformers.js">🤗 Transformers.js</a>
-    </div>
-  </div>
+  </section>
+  <footer class="footer">
+    Made with <a
+      class="underline"
+      href="https://github.com/xenova/transformers.js">🤗 Transformers.js</a
+    >
+  </footer>
 </main>
 
 <style>
-.container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-}
-.absolute.bottom-4 {
-  position: absolute;
-  bottom: 1rem;
-}
+  .app-root {
+    min-height: 100vh;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #f6f8fa;
+  }
+  .header {
+    padding: 2rem 1rem 1rem 1rem;
+    text-align: center;
+  }
+  .main-title {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: #1a202c;
+    margin-bottom: 0.5rem;
+  }
+  .main-subtitle {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 1.5rem;
+  }
+  .main-content {
+    flex: 1;
+    width: 100%;
+    max-width: 100vw;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 1rem;
+  }
+  .footer {
+    width: 100%;
+    padding: 2rem 0 1rem 0;
+    text-align: center;
+    font-size: 0.95rem;
+    color: #6b7280;
+  }
 </style>
