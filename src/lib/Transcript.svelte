@@ -43,10 +43,14 @@
         <div class="progress-container">
           <div class="progress-bar"></div>
         </div>
-        <p><em>Transcribing... (partial result)</em></p>
+        <p><em>Transcribing...</em></p>
       {/if}
       {#if $transcribedData.text}
-        <p>{$transcribedData.text}</p>
+        <div class="transcript-span-container">
+          <span role="textbox" class="transcript-span"
+            >{$transcribedData.text}</span
+          >
+        </div>
       {/if}
     {:else}
       <p>No transcript yet.</p>
@@ -96,7 +100,6 @@
     margin-left: 0.5rem;
   }
   .transcript-text {
-    /* margin-top: 1rem; */
     width: 100%;
     max-width: 600px;
     text-align: left;
@@ -104,6 +107,12 @@
   }
   .transcript-text em {
     color: #888;
+  }
+  .transcript-span-container {
+    border: 1px solid #374151;
+    border-radius: 8px;
+    margin-block-end: 1rem;
+    padding: 0.5rem;
   }
   .progress-container {
     width: 100%;
