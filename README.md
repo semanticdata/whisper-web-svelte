@@ -1,6 +1,6 @@
-# Svelte + TS + Vite
+# Whisper Web Svelte
 
-This template should help get you started developing with Svelte and TypeScript in Vite.
+A web app to transcribe audio files using OpenAI's Whisper API.
 
 ## Recommended IDE Setup
 
