@@ -41,7 +41,7 @@ export function createTranscriber(): Transcriber {
   let worker: Worker | undefined;
   try {
     if (typeof window !== 'undefined') {
-      worker = new Worker('/src/lib/worker.js', { type: 'module' });
+      worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
     }
   } catch (err) {
     console.error('Failed to initialize worker:', err);
