@@ -47,7 +47,7 @@
       {#if $transcribedData.text}
         <p>{$transcribedData.text}</p>
       {/if}
-      {#if $transcribedData.chunks && $transcribedData.chunks.length > 0}
+      <!-- {#if $transcribedData.chunks && $transcribedData.chunks.length > 0}
         <ul>
           {#each $transcribedData.chunks as chunk}
             <li>
@@ -55,7 +55,7 @@
             </li>
           {/each}
         </ul>
-      {/if}
+      {/if} -->
     {:else}
       <p>No transcript yet.</p>
     {/if}
@@ -72,9 +72,9 @@
   .transcript-text em {
     color: #888;
   }
-  .transcript-text ul {
+  /* .transcript-text ul {
     margin: 0.5rem 0 0 1rem;
     padding: 0;
     font-size: 0.95em;
-  }
+  } */
 </style>
