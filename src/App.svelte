@@ -1,50 +1,34 @@
 <script lang="ts">
-  import svelteLogo from './assets/svelte.svg'
-  import appLogo from '/favicon.svg'
-  import Counter from './lib/Counter.svelte'
-  import PWABadge from './lib/PWABadge.svelte'
+  import AudioManager from './lib/AudioManager.svelte';
+  import { createTranscriber } from './lib/transcriber';
+  const transcriber = createTranscriber();
 </script>
 
 <main>
-  <div>
-    <a href="https://vite.dev" target="_blank" rel="noreferrer">
-      <img src={appLogo} class="logo" alt="whisper-web-svelte Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank" rel="noreferrer">
-      <img src={svelteLogo} class="logo svelte" alt="Svelte Logo" />
-    </a>
+  <div class="container">
+    <h1 class="text-5xl font-extrabold tracking-tight text-slate-900 sm:text-7xl text-center">
+      Whisper Web
+    </h1>
+    <h2 class="mt-3 mb-5 px-4 text-center text-1xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
+      ML-powered speech recognition directly in your browser
+    </h2>
+    <AudioManager {transcriber} />
+    <div class="absolute bottom-4">
+      Made with <a class="underline" href="https://github.com/xenova/transformers.js">🤗 Transformers.js</a>
+    </div>
   </div>
-  <h1>whisper-web-svelte</h1>
-
-  <div class="card">
-    <Counter />
-  </div>
-
-  <p>
-    Check out <a href="https://github.com/sveltejs/kit#readme" target="_blank" rel="noreferrer">SvelteKit</a>, the official Svelte app framework powered by Vite!
-  </p>
-
-  <p class="read-the-docs">
-    Click on the Vite and Svelte logos to learn more
-  </p>
 </main>
 
-<PWABadge />
-
 <style>
-  .logo {
-    height: 6em;
-    padding: 1.5em;
-    will-change: filter;
-    transition: filter 300ms;
-  }
-  .logo:hover {
-    filter: drop-shadow(0 0 2em #646cffaa);
-  }
-  .logo.svelte:hover {
-    filter: drop-shadow(0 0 2em #ff3e00aa);
-  }
-  .read-the-docs {
-    color: #888;
-  }
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+.absolute.bottom-4 {
+  position: absolute;
+  bottom: 1rem;
+}
 </style>
