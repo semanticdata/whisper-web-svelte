@@ -3,13 +3,11 @@
   import Transcript from "./Transcript.svelte";
   import AnnotateTranscript from "./AnnotateTranscript.svelte";
   import type { Transcriber } from "../lib/transcriber";
-  import {
-    handleAudioFile,
-    clearAudioState
-  } from "./audioUtils";
+  import { handleAudioFile, clearAudioState } from "./audioUtils";
 
   export let transcriber: Transcriber;
   const { isBusy, transcript } = transcriber;
+  const workerStatus = transcriber.workerStatus;
 
   let audioUrl: string | null = null;
   let audioFile: File | null = null;
@@ -20,12 +18,21 @@
     const input = event.target as HTMLInputElement;
     if (input.files && input.files.length > 0) {
       audioFile = input.files[0];
-      audioUrl = await handleAudioFile(audioFile, audioUrl, transcriber.transcribe);
+      audioUrl = await handleAudioFile(
+        audioFile,
+        audioUrl,
+        transcriber.transcribe
+      );
     }
   }
 
   function clearAudio() {
-    clearAudioState(audioUrl, (url) => (audioUrl = url), (file) => (audioFile = file), () => transcriber.transcript.set(undefined));
+    clearAudioState(
+      audioUrl,
+      (url) => (audioUrl = url),
+      (file) => (audioFile = file),
+      () => transcriber.transcript.set(undefined)
+    );
   }
 
   async function handleDrop(event: DragEvent) {
@@ -39,7 +46,11 @@
       const file = event.dataTransfer.files[0];
       if (file && file.type.startsWith("audio/")) {
         audioFile = file;
-        audioUrl = await handleAudioFile(audioFile, audioUrl, transcriber.transcribe);
+        audioUrl = await handleAudioFile(
+          audioFile,
+          audioUrl,
+          transcriber.transcribe
+        );
       }
     }
   }
@@ -89,14 +100,22 @@
       <button on:click={clearAudio} class="ml-2 file-upload-btn">Clear</button>
     </div>
   {/if}
-  {#if $isBusy}
-    <div class="text-blue-600 mt-2">Transcribing audio, please wait...</div>
-  {/if}
-  {#if $transcript && !$isBusy && $transcript.text}
-    <AnnotateTranscript transcript={$transcript.text} />
+  {#if $isBusy || ($transcript && !$isBusy && $transcript.text)}
+    <AnnotateTranscript transcript={$transcript?.text ?? ""} />
   {:else}
     <Transcript transcribedData={transcript} />
   {/if}
+  <div class="worker-status">
+    {#if $workerStatus.status === "loading"}
+      <div>Loading model...</div>
+    {:else if $workerStatus.status === "ready"}
+      <div>Model ready: {$workerStatus.model}</div>
+    {:else if $workerStatus.status === "transcribing"}
+      <div>Transcribing...</div>
+    {:else if $workerStatus.status === "error"}
+      <div class="error">Error: {$workerStatus.message}</div>
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -175,5 +194,8 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+  }
+  .worker-status {
+    color: #374151;
   }
 </style>

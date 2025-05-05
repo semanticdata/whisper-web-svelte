@@ -34,7 +34,7 @@
         </div>
       {/if}
     {:else}
-      <p>No transcript yet.</p>
+      <p>No transcript yet. Please upload a file.</p>
     {/if}
   </div>
   {#if $transcribedData && !$transcribedData.isBusy && $transcribedData.text}
@@ -88,6 +88,9 @@
   }
   .transcript-text em {
     color: #888;
+  }
+  .transcript-text p {
+    text-align: center;
   }
   .transcript-span-container {
     border: 1px solid #374151;

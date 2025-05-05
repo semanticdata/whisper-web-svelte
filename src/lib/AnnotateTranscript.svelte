@@ -8,6 +8,11 @@
   let address = "";
   let phone = "";
   let notes = "";
+  let displayedTranscript = transcript;
+
+  $: if (transcript !== displayedTranscript) {
+    displayedTranscript = transcript;
+  }
 
   function handleDownload() {
     downloadAnnotatedTranscript({
@@ -42,7 +47,7 @@
     </label>
     <label>
       Transcript:
-      <textarea value={transcript} readonly rows="6"></textarea>
+      <textarea bind:value={displayedTranscript} readonly rows="6"></textarea>
     </label>
     <button type="submit" class="file-upload-btn">Download as TXT</button>
   </form>

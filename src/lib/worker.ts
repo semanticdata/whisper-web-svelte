@@ -43,6 +43,25 @@ self.addEventListener("message", async (event: MessageEvent) => {
     console.log('[Worker] Received message:', event.data);
     try {
         const message = event.data;
+        // Handle status check
+        if (message.type === 'status') {
+            const model = AutomaticSpeechRecognitionPipelineFactory.model || 'Xenova/whisper-tiny';
+            self.postMessage({
+                status: "ready",
+                task: "automatic-speech-recognition",
+                model,
+            });
+            return;
+        }
+        // Only proceed if audio is present
+        if (!message.audio) {
+            self.postMessage({
+                status: "error",
+                task: "automatic-speech-recognition",
+                data: "No audio provided for transcription."
+            });
+            return;
+        }
         console.log('[Worker] Starting transcription...');
         if (message.audio) {
             console.log('[Worker] Audio type:', Object.prototype.toString.call(message.audio), 'Length:', message.audio.byteLength || message.audio.length);

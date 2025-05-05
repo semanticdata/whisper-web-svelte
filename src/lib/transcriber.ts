@@ -12,6 +12,12 @@ export interface Transcriber {
   transcribe: (file: File) => Promise<void>;
 }
 
+export interface WorkerStatus {
+  status: 'loading' | 'ready' | 'error' | 'transcribing' | 'complete';
+  message?: string;
+  model?: string;
+}
+
 function decodeAudioFile(file: File): Promise<Float32Array> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -32,9 +38,10 @@ function decodeAudioFile(file: File): Promise<Float32Array> {
   });
 }
 
-export function createTranscriber(): Transcriber {
+export function createTranscriber(): Transcriber & { workerStatus: Writable<WorkerStatus> } {
   const transcript = writable<TranscriberData | undefined>(undefined);
   const isBusy = writable(false);
+  const workerStatus = writable<WorkerStatus>({ status: 'loading', message: 'Loading model...' });
 
   // Create the worker
   // NOTE: If using Vite or SvelteKit, you may need to use an import.meta.url or special syntax for worker path resolution.
@@ -51,31 +58,40 @@ export function createTranscriber(): Transcriber {
   if (worker) {
     worker.onmessage = (event: MessageEvent) => {
       console.log('Message from worker:', event.data);
-      const { status, data } = event.data;
-      if (status === 'complete') {
+      const { status, data, model } = event.data;
+      if (status === 'ready') {
+        workerStatus.set({ status: 'ready', message: 'Model ready', model });
+      } else if (status === 'complete') {
         transcript.set({
           isBusy: false,
           text: data.text,
           chunks: data.chunks,
         });
         isBusy.set(false);
+        workerStatus.set({ status: 'complete', message: 'Transcription complete', model });
       } else if (status === 'update') {
         // Live partial transcription feedback
+        // data: [partialText, {chunks: [...] }]
         transcript.set({
           isBusy: true,
-          text: data.text,
-          chunks: data.chunks,
+          text: Array.isArray(data) ? data[0] : data.text,
+          chunks: Array.isArray(data) && data[1]?.chunks ? data[1].chunks : data.chunks,
         });
+        workerStatus.set({ status: 'transcribing', message: 'Transcribing...', model });
       } else if (status === 'error') {
         console.error('Worker error:', data);
+        workerStatus.set({ status: 'error', message: String(data), model });
       }
     };
+    // Send a ping to get model status on load
+    worker.postMessage({ type: 'status' });
   }
 
   async function transcribe(file: File) {
     if (!worker) return;
     isBusy.set(true);
     transcript.set({ isBusy: true, text: '', chunks: [] });
+    workerStatus.set({ status: 'transcribing', message: 'Transcribing...' });
     const audioBuffer = await decodeAudioFile(file);
     // Send to worker (adapt as needed for your worker's API)
     worker.postMessage({
@@ -92,5 +108,6 @@ export function createTranscriber(): Transcriber {
     transcript,
     isBusy,
     transcribe,
+    workerStatus,
   };
 }
