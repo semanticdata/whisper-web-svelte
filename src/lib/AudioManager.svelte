@@ -3,40 +3,31 @@
   import Transcript from "./Transcript.svelte";
   import AnnotateTranscript from "./AnnotateTranscript.svelte";
   import type { Transcriber } from "../lib/transcriber";
+  import {
+    handleAudioFile,
+    clearAudioState
+  } from "./audioUtils";
 
   export let transcriber: Transcriber;
-
-  // Destructure the Svelte stores from the transcriber object
   const { isBusy, transcript } = transcriber;
 
   let audioUrl: string | null = null;
   let audioFile: File | null = null;
   let audioPlayer: HTMLAudioElement | null = null;
-
   let isDragging = false;
 
   async function handleFileChange(event: Event) {
     const input = event.target as HTMLInputElement;
     if (input.files && input.files.length > 0) {
       audioFile = input.files[0];
-      if (audioUrl) {
-        URL.revokeObjectURL(audioUrl);
-      }
-      audioUrl = URL.createObjectURL(audioFile);
-      await transcriber.transcribe(audioFile);
+      audioUrl = await handleAudioFile(audioFile, audioUrl, transcriber.transcribe);
     }
   }
 
   function clearAudio() {
-    if (audioUrl) {
-      URL.revokeObjectURL(audioUrl);
-      audioUrl = null;
-      audioFile = null;
-      transcriber.transcript.set(undefined);
-    }
+    clearAudioState(audioUrl, (url) => (audioUrl = url), (file) => (audioFile = file), () => transcriber.transcript.set(undefined));
   }
 
-  // Drag and drop handlers
   async function handleDrop(event: DragEvent) {
     event.preventDefault();
     isDragging = false;
@@ -48,11 +39,7 @@
       const file = event.dataTransfer.files[0];
       if (file && file.type.startsWith("audio/")) {
         audioFile = file;
-        if (audioUrl) {
-          URL.revokeObjectURL(audioUrl);
-        }
-        audioUrl = URL.createObjectURL(audioFile);
-        await transcriber.transcribe(audioFile);
+        audioUrl = await handleAudioFile(audioFile, audioUrl, transcriber.transcribe);
       }
     }
   }

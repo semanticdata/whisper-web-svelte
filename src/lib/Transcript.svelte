@@ -1,38 +1,19 @@
 <script lang="ts">
-  // Accepts a Svelte writable store as a prop
   import { get } from "svelte/store";
   import type { Writable } from "svelte/store";
   import type { TranscriberData } from "../lib/transcriber";
+  import { exportTXT, exportJSON } from "./exportUtils";
   /**
    * transcribedData: a Svelte writable store containing the transcript data
    */
   export let transcribedData: Writable<TranscriberData | undefined>;
 
-  function saveBlob(blob: Blob, filename: string) {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(url);
+  function handleExportTXT() {
+    exportTXT(get(transcribedData));
   }
 
-  function exportTXT() {
-    const data = get(transcribedData);
-    const chunks = data?.chunks ?? [];
-    const text = chunks
-      .map((chunk) => chunk.text)
-      .join("")
-      .trim();
-    const blob = new Blob([text], { type: "text/plain" });
-    saveBlob(blob, "transcript.txt");
-  }
-
-  function exportJSON() {
-    const data = get(transcribedData);
-    let jsonData = JSON.stringify(data?.chunks ?? [], null, 2);
-    const blob = new Blob([jsonData], { type: "application/json" });
-    saveBlob(blob, "transcript.json");
+  function handleExportJSON() {
+    exportJSON(get(transcribedData));
   }
 </script>
 
@@ -58,8 +39,8 @@
   </div>
   {#if $transcribedData && !$transcribedData.isBusy && $transcribedData.text}
     <div class="transcript-actions">
-      <button on:click={exportTXT} class="file-upload-btn">Export TXT</button>
-      <button on:click={exportJSON} class="file-upload-btn ml-2"
+      <button on:click={handleExportTXT} class="file-upload-btn">Export TXT</button>
+      <button on:click={handleExportJSON} class="file-upload-btn ml-2"
         >Export JSON</button
       >
     </div>

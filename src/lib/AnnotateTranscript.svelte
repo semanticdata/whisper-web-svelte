@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
+  import { downloadAnnotatedTranscript } from "./annotateUtils";
   export let transcript: string = "";
   const dispatch = createEventDispatcher();
 
@@ -8,22 +9,21 @@
   let phone = "";
   let notes = "";
 
-  function downloadAnnotated() {
-    const annotated = `Name: ${name}\nAddress: ${address}\nPhone: ${phone}\nNotes: ${notes}\n\nTranscript:\n${transcript}`;
-    const blob = new Blob([annotated], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "annotated_transcript.txt";
-    link.click();
-    URL.revokeObjectURL(url);
-    dispatch("downloaded");
+  function handleDownload() {
+    downloadAnnotatedTranscript({
+      name,
+      address,
+      phone,
+      notes,
+      transcript,
+      onDownloaded: () => dispatch("downloaded"),
+    });
   }
 </script>
 
 <div class="annotate-container">
   <h2>Annotate Transcript</h2>
-  <form on:submit|preventDefault={downloadAnnotated}>
+  <form on:submit|preventDefault={handleDownload}>
     <label>
       Name:
       <input type="text" bind:value={name} placeholder="Enter name" />
