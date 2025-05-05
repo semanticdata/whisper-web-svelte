@@ -9,7 +9,7 @@ export interface TranscriberData {
 export interface Transcriber {
   transcript: Writable<TranscriberData | undefined>;
   isBusy: Writable<boolean>;
-  transcribe: (file: File) => Promise<void>;
+  transcribe: (file: File, model?: string, language?: string) => Promise<void>;
 }
 
 export interface WorkerStatus {
@@ -18,15 +18,62 @@ export interface WorkerStatus {
   model?: string;
 }
 
+// Supported models (all free, no API key needed)
+export const SUPPORTED_MODELS = [
+  {
+    id: 'Xenova/whisper-tiny',
+    name: 'Whisper Tiny',
+    languages: ['multilingual'],
+    recommended: true
+  },
+  {
+    id: 'Xenova/whisper-base',
+    name: 'Whisper Base',
+    languages: ['multilingual'],
+    recommended: true
+  },
+  {
+    id: 'Xenova/whisper-small',
+    name: 'Whisper Small',
+    languages: ['multilingual'],
+    recommended: true
+  },
+  {
+    id: 'Xenova/whisper-medium',
+    name: 'Whisper Medium',
+    languages: ['multilingual'],
+    recommended: false // Larger model, slower but more accurate
+  },
+  {
+    id: 'distil-whisper/distil-medium.en',
+    name: 'Distil-Whisper Medium (English)',
+    languages: ['en'],
+    recommended: true
+  },
+  {
+    id: 'distil-whisper/distil-large-v2',
+    name: 'Distil-Whisper Large v2',
+    languages: ['multilingual'],
+    recommended: true
+  },
+  {
+    id: 'Xenova/whisper-large-v3',
+    name: 'Whisper Large v3',
+    languages: ['multilingual'],
+    recommended: false // Very large model
+  }
+] as const;
+
+export type SupportedModel = typeof SUPPORTED_MODELS[number]['id'];
+
 function decodeAudioFile(file: File): Promise<Float32Array> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = async () => {
       try {
         const arrayBuffer = reader.result as ArrayBuffer;
-        const audioContext = new AudioContext({ sampleRate: 16000 }); // Whisper expects 16kHz
+        const audioContext = new AudioContext({ sampleRate: 16000 });
         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-        // Use the first channel (mono)
         const float32 = audioBuffer.getChannelData(0);
         resolve(new Float32Array(float32));
       } catch (err) {
@@ -38,70 +85,145 @@ function decodeAudioFile(file: File): Promise<Float32Array> {
   });
 }
 
-export function createTranscriber(): Transcriber & { workerStatus: Writable<WorkerStatus> } {
+export function createTranscriber(): Transcriber & {
+  workerStatus: Writable<WorkerStatus>;
+  supportedModels: typeof SUPPORTED_MODELS;
+  loadModel: (model?: SupportedModel) => Promise<void>;
+} {
   const transcript = writable<TranscriberData | undefined>(undefined);
   const isBusy = writable(false);
-  const workerStatus = writable<WorkerStatus>({ status: 'loading', message: 'Loading model...' });
+  const workerStatus = writable<WorkerStatus>({
+    status: 'loading',
+    message: 'Loading model...'
+  });
 
-  // Create the worker
-  // NOTE: If using Vite or SvelteKit, you may need to use an import.meta.url or special syntax for worker path resolution.
   let worker: Worker | undefined;
   try {
     if (typeof window !== 'undefined') {
-      worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+      worker = new Worker(new URL('./worker.ts', import.meta.url), {
+        type: 'module'
+      });
     }
   } catch (err) {
     console.error('Failed to initialize worker:', err);
+    workerStatus.set({
+      status: 'error',
+      message: 'Failed to initialize transcriber worker'
+    });
   }
 
-  // Listen for messages from the worker
   if (worker) {
     worker.onmessage = (event: MessageEvent) => {
-      console.log('Message from worker:', event.data);
-      const { status, data, model } = event.data;
-      if (status === 'ready') {
-        workerStatus.set({ status: 'ready', message: 'Model ready', model });
-      } else if (status === 'complete') {
-        transcript.set({
-          isBusy: false,
-          text: data.text,
-          chunks: data.chunks,
-        });
-        isBusy.set(false);
-        workerStatus.set({ status: 'complete', message: 'Transcription complete', model });
-      } else if (status === 'update') {
-        // Live partial transcription feedback
-        // data: [partialText, {chunks: [...] }]
-        transcript.set({
-          isBusy: true,
-          text: Array.isArray(data) ? data[0] : data.text,
-          chunks: Array.isArray(data) && data[1]?.chunks ? data[1].chunks : data.chunks,
-        });
-        workerStatus.set({ status: 'transcribing', message: 'Transcribing...', model });
-      } else if (status === 'error') {
-        console.error('Worker error:', data);
-        workerStatus.set({ status: 'error', message: String(data), model });
+      const { status, data = {}, model, error } = event.data;
+
+      switch (status) {
+        case 'ready':
+          workerStatus.set({
+            status: 'ready',
+            message: 'Model ready',
+            model
+          });
+          break;
+
+        case 'complete':
+          if (data) {
+            transcript.set({
+              isBusy: false,
+              text: data.text || '',
+              chunks: data.chunks || [],
+            });
+          }
+          isBusy.set(false);
+          workerStatus.set({
+            status: 'complete',
+            message: 'Transcription complete',
+            model
+          });
+          break;
+
+        case 'update':
+          if (data) {
+            transcript.set({
+              isBusy: true,
+              text: Array.isArray(data) ? (data[0] || '') : (data.text || ''),
+              chunks: Array.isArray(data) && data[1]?.chunks ? data[1].chunks : (data.chunks || []),
+            });
+          }
+          workerStatus.set({
+            status: 'transcribing',
+            message: 'Transcribing...',
+            model
+          });
+          break;
+
+        case 'error':
+          console.error('Worker error:', error);
+          isBusy.set(false);
+          workerStatus.set({
+            status: 'error',
+            message: error?.message || String(error),
+            model
+          });
+          break;
+
+        case 'progress':
+          if (data) {
+            workerStatus.set({
+              status: 'loading',
+              message: `Downloading model (${data.file || 'unknown'}: ${data.progress || 0}%)`,
+              model: data.name
+            });
+          }
+          break;
       }
     };
-    // Send a ping to get model status on load
+
+    // Check worker status on load
     worker.postMessage({ type: 'status' });
   }
 
-  async function transcribe(file: File) {
-    if (!worker) return;
+  async function loadModel(model: SupportedModel = 'Xenova/whisper-tiny') {
+    if (!worker) throw new Error('Transcriber worker not available');
+    workerStatus.set({ status: 'loading', message: 'Loading model...', model });
+    worker.postMessage({ type: 'load-model', model, quantized: true });
+  }
+
+  async function transcribe(
+    file: File,
+    model: SupportedModel = 'Xenova/whisper-tiny',
+    language: string = 'en'
+  ) {
+    if (!worker) {
+      throw new Error('Transcriber worker not available');
+    }
+
     isBusy.set(true);
     transcript.set({ isBusy: true, text: '', chunks: [] });
-    workerStatus.set({ status: 'transcribing', message: 'Transcribing...' });
-    const audioBuffer = await decodeAudioFile(file);
-    // Send to worker (adapt as needed for your worker's API)
-    worker.postMessage({
-      audio: audioBuffer,
-      model: 'Xenova/whisper-tiny', // public model, tokenless loading
-      multilingual: false,
-      quantized: false,
-      subtask: 'transcribe',
-      language: 'en',
+    workerStatus.set({
+      status: 'transcribing',
+      message: 'Starting transcription...'
     });
+
+    try {
+      const audioBuffer = await decodeAudioFile(file);
+      const selectedModel = SUPPORTED_MODELS.find(m => m.id === model);
+
+      worker.postMessage({
+        audio: audioBuffer,
+        model,
+        multilingual: selectedModel?.languages.includes('multilingual') || false,
+        quantized: true, // Use quantized models by default for better performance
+        subtask: language === 'en' ? 'transcribe' : 'translate',
+        language
+      });
+    } catch (err) {
+      isBusy.set(false);
+      workerStatus.set({
+        status: 'error',
+        message: err instanceof Error ? err.message : 'Failed to process audio'
+      });
+      throw err;
+    }
   }
 
   return {
@@ -109,5 +231,7 @@ export function createTranscriber(): Transcriber & { workerStatus: Writable<Work
     isBusy,
     transcribe,
     workerStatus,
+    supportedModels: SUPPORTED_MODELS,
+    loadModel
   };
 }

@@ -5,7 +5,8 @@
   import type { Transcriber } from "../lib/transcriber";
   import { handleAudioFile, clearAudioState } from "./audioUtils";
 
-  export let transcriber: Transcriber;
+  export let transcriber: ReturnType<typeof import("../lib/transcriber").createTranscriber>;
+  export let model: string = "Xenova/whisper-tiny";
   const { isBusy, transcript } = transcriber;
   const workerStatus = transcriber.workerStatus;
 
@@ -20,9 +21,15 @@
       audioFile = input.files[0];
       audioUrl = await handleAudioFile(
         audioFile,
-        audioUrl,
-        transcriber.transcribe
+        audioUrl
       );
+      // Do not transcribe automatically
+    }
+  }
+
+  async function handleTranscribe() {
+    if (audioFile) {
+      await transcriber.transcribe(audioFile, model);
     }
   }
 
@@ -48,9 +55,9 @@
         audioFile = file;
         audioUrl = await handleAudioFile(
           audioFile,
-          audioUrl,
-          transcriber.transcribe
+          audioUrl
         );
+        // Do not transcribe automatically
       }
     }
   }
@@ -98,6 +105,13 @@
     <div class="audio-controls">
       <audio bind:this={audioPlayer} src={audioUrl} controls></audio>
       <button on:click={clearAudio} class="ml-2 file-upload-btn">Clear</button>
+      <button on:click={handleTranscribe} class="ml-2 file-upload-btn" disabled={$isBusy || !$workerStatus || $workerStatus.status === 'loading'}>
+        {#if $isBusy}
+          Transcribing...
+        {:else}
+          Transcribe
+        {/if}
+      </button>
     </div>
   {/if}
   {#if $isBusy || ($transcript && !$isBusy && $transcript.text)}

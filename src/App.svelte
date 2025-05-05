@@ -1,7 +1,13 @@
 <script lang="ts">
   import AudioManager from "./lib/AudioManager.svelte";
   import { createTranscriber } from "./lib/transcriber";
+  import { get } from "svelte/store";
+
   const transcriber = createTranscriber();
+  const supportedModels = transcriber.supportedModels;
+  const workerStatus = transcriber.workerStatus;
+
+  let selectedModel = supportedModels[0].id;
 </script>
 
 <main class="app-root">
@@ -11,14 +17,28 @@
       ML-powered speech recognition directly in your browser
     </span>
   </header>
+  <div class="model-status-bar">
+    <label for="model-select">Model:</label>
+    <select id="model-select" bind:value={selectedModel}>
+      {#each supportedModels as model}
+        <option value={model.id}>{model.name}</option>
+      {/each}
+    </select>
+    <span class="status-text">
+      {$workerStatus.status === 'loading' ? 'Loading...' :
+        $workerStatus.status === 'ready' ? `Ready: ${$workerStatus.model}` :
+        $workerStatus.status === 'transcribing' ? 'Transcribing...' :
+        $workerStatus.status === 'error' ? `Error: ${$workerStatus.message}` :
+        $workerStatus.status === 'complete' ? 'Done' : ''}
+    </span>
+  </div>
   <section class="main-content">
-    <AudioManager {transcriber} />
+    <AudioManager {transcriber} model={selectedModel} />
   </section>
   <footer class="footer">
     Made with <a
       class="underline"
-      href="https://github.com/xenova/transformers.js">🤗 Transformers.js</a
-    >
+      href="https://github.com/xenova/transformers.js">🤗 Transformers.js</a>
   </footer>
 </main>
 
@@ -36,7 +56,7 @@
     justify-content: space-between;
     align-items: center;
     padding-inline: 1rem;
-    background: palegoldenrod;
+    /* background: palegoldenrod; */
   }
   .main-title {
     font-size: 1.5rem;
@@ -47,6 +67,18 @@
     font-weight: 600;
     color: #374151;
   }
+  .model-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    background: #f3f4f6;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .status-text {
+    font-weight: 500;
+    color: #374151;
+  }
   .main-content {
     flex: 1;
     width: 100%;
@@ -55,13 +87,13 @@
     flex-direction: column;
     align-items: center;
     padding-block-start: 1rem;
-    background: palevioletred;
+    /* background: palevioletred; */
   }
   .footer {
     width: 100%;
     padding: 1rem 0;
     text-align: center;
     color: #6b7280;
-    background: palegoldenrod;
+    /* background: palegoldenrod; */
   }
 </style>

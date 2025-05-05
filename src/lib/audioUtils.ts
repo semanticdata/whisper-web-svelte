@@ -19,7 +19,9 @@ export async function handleAudioFile(
     revokeAudioUrl(currentUrl);
   }
   const url = createAudioUrl(file);
-  await onTranscribe(file);
+  if (typeof onTranscribe === 'function') {
+    await onTranscribe(file);
+  }
   return url;
 }
 

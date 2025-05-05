@@ -149,7 +149,9 @@ export class PipelineFactory {
 
     static async cleanup() {
         if (this.instance) {
-            await this.instance.dispose();
+            if (typeof this.instance.dispose === 'function') {
+                await this.instance.dispose();
+            }
             this.instance = null;
         }
     }
@@ -171,6 +173,25 @@ self.addEventListener("message", async (event: MessageEvent<WorkerMessage>) => {
                 status: "ready",
                 task: "automatic-speech-recognition",
                 model: AutomaticSpeechRecognitionPipelineFactory.model || 'Xenova/whisper-tiny',
+            });
+            return;
+        }
+
+        // NEW: Handle model preloading
+        if (message.type === 'load-model') {
+            const modelId = message.model || 'Xenova/whisper-tiny';
+            const quantized = message.quantized ?? true;
+            const multilingual = message.multilingual ?? false;
+            // Clean up and set new model
+            await AutomaticSpeechRecognitionPipelineFactory.cleanup();
+            AutomaticSpeechRecognitionPipelineFactory.model = modelId;
+            AutomaticSpeechRecognitionPipelineFactory.quantized = quantized;
+            // Actually load the model
+            await AutomaticSpeechRecognitionPipelineFactory.getInstance();
+            self.postMessage({
+                status: "ready",
+                task: "automatic-speech-recognition",
+                model: modelId,
             });
             return;
         }
@@ -271,6 +292,10 @@ export const transcribe = async (
     };
 
     const callback_function = (item: any) => {
+        if (!item || !Array.isArray(item) || !item[0]) {
+            return;
+        }
+
         const now = performance.now();
         if (progressState.lastUpdateTime &&
             now - progressState.lastUpdateTime < progressState.updateInterval) {
@@ -278,7 +303,9 @@ export const transcribe = async (
         }
 
         const last = chunks_to_process[chunks_to_process.length - 1];
-        last.tokens = [...item[0].output_token_ids];
+        if (!last) return;
+
+        last.tokens = [...(item[0].output_token_ids || [])];
 
         const progressData = calculateProgress(chunks_to_process, progressState);
         if (!progressData) return;
@@ -294,7 +321,7 @@ export const transcribe = async (
         self.postMessage({
             status: "update",
             task: "automatic-speech-recognition",
-            data: output,
+            data: output || { text: '', chunks: [] },
             progress: progressData.progress,
             time: {
                 elapsed: progressData.timeElapsed,
