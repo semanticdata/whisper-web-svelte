@@ -3,257 +3,324 @@ import { pipeline, env } from "@xenova/transformers";
 
 env.allowLocalModels = false;
 
-// Add these at the top of your file
+// ==================== TYPES ====================
+interface TranscriptionChunk {
+    tokens: any[];
+    finalised: boolean;
+}
+
+interface TranscriptionOutput {
+    text: string;
+    chunks?: any[];
+}
+
+interface WorkerMessage {
+    type?: string;
+    audio?: any;
+    model?: string;
+    multilingual?: boolean;
+    quantized?: boolean;
+    subtask?: string;
+    language?: string;
+}
+
 interface ProgressState {
     startTime: number | null;
     lastUpdateTime: number | null;
     smoothedProgress: number;
-    updateInterval: number; // ms between progress updates
+    updateInterval: number;
+    minProgressStep: number;
+    lastProgress: number;
+}
+
+interface ProgressData {
+    progress: number;
+    timeElapsed: number;
+    estimatedTotal: number | null;
+}
+
+interface TranscriptionConfig {
+    model: string;
+    multilingual: boolean;
+    quantized: boolean;
+    subtask: string;
+    language: string;
+}
+
+// ==================== CONSTANTS ====================
+const LOG_LEVEL = {
+    DEBUG: 0,
+    INFO: 1,
+    WARN: 2,
+    ERROR: 3
+};
+
+const DEFAULT_CONFIG = {
+    updateInterval: 200,
+    minProgressStep: 1,
+    maxRetainedChunks: 5,
+    logLevel: LOG_LEVEL.INFO
+};
+
+// ==================== UTILITIES ====================
+class TranscriptionError extends Error {
+    constructor(message: string, public readonly details?: any) {
+        super(message);
+        this.name = 'TranscriptionError';
+    }
 }
 
 const progressState: ProgressState = {
     startTime: null,
     lastUpdateTime: null,
     smoothedProgress: 0,
-    updateInterval: 200 // Update every 200ms max
+    updateInterval: DEFAULT_CONFIG.updateInterval,
+    minProgressStep: DEFAULT_CONFIG.minProgressStep,
+    lastProgress: 0
 };
 
+let logLevel = DEFAULT_CONFIG.logLevel;
+
+function log(level: number, message: string, data?: any) {
+    if (level >= logLevel) {
+        const prefix = `[Worker] ${new Date().toISOString()}`;
+        console[level === LOG_LEVEL.ERROR ? 'error' :
+            level === LOG_LEVEL.WARN ? 'warn' : 'log'](
+                `${prefix} ${message}`, data || ''
+            );
+    }
+}
+
+// ==================== PROGRESS CALCULATION ====================
 function calculateProgress(
-    chunks: Array<{ finalised: boolean }>,
+    chunks: TranscriptionChunk[],
     state: ProgressState
-): {
-    progress: number;
-    timeElapsed: number;
-    estimatedTotal: number | null;
-} {
-    const now = Date.now();
+): ProgressData | null {
+    const now = performance.now();
     if (!state.startTime) state.startTime = now;
-    
+
     const finalized = chunks.filter(c => c.finalised).length;
     const total = chunks.length;
-    
-    // Weighted average favoring recent chunks
-    const rawProgress = total > 0 
-        ? Math.min(100, (finalized / (total * 0.9)) * 100) 
+
+    const rawProgress = total > 0
+        ? Math.min(100, (finalized / (total * 0.9)) * 100)
         : 0;
-    
-    // Smooth progress to avoid jumps
+
     state.smoothedProgress = 0.7 * state.smoothedProgress + 0.3 * rawProgress;
-    
-    // Calculate time estimates
-    const elapsed = (now - state.startTime) / 1000;
+    const progress = Math.round(state.smoothedProgress);
+
+    // Skip if progress change is too small
+    if (Math.abs(progress - state.lastProgress) < state.minProgressStep && progress !== 100) {
+        return null;
+    }
+
+    state.lastProgress = progress;
+
+    const elapsed = (now - (state.startTime || now)) / 1000;
     let estimate = null;
     if (state.smoothedProgress > 5) {
         estimate = elapsed / (state.smoothedProgress / 100);
     }
-    
+
     return {
-        progress: Math.round(state.smoothedProgress),
+        progress,
         timeElapsed: Math.round(elapsed),
         estimatedTotal: estimate ? Math.round(estimate) : null
     };
 }
 
-// Define model factories
-// Ensures only one model is created of each type
+// ==================== PIPELINE FACTORY ====================
 export class PipelineFactory {
     static task: string | null = null;
     static model: string | undefined = undefined;
     static quantized: boolean | null = null;
     static instance: any = null;
 
-    tokenizer: any;
-    model: string | undefined;
-    quantized: boolean | null;
-
-    constructor(tokenizer: any, model: string | undefined, quantized: boolean | null) {
-        this.tokenizer = tokenizer;
-        this.model = model;
-        this.quantized = quantized;
-    }
-
-    static async getInstance(progress_callback: ((data: any) => void) | null = null): Promise<any> {
+    static async getInstance(progress_callback?: (data: any) => void): Promise<any> {
         if (this.instance === null) {
             this.instance = pipeline(this.task, this.model, {
                 quantized: this.quantized,
                 progress_callback,
-                revision: this.model && this.model.includes("/whisper-medium") ? "no_attentions" : "main"
+                revision: this.model?.includes("/whisper-medium") ? "no_attentions" : "main"
             });
         }
         return this.instance;
     }
+
+    static async cleanup() {
+        if (this.instance) {
+            await this.instance.dispose();
+            this.instance = null;
+        }
+    }
 }
 
 export class AutomaticSpeechRecognitionPipelineFactory extends PipelineFactory {
-    static override task: string = "automatic-speech-recognition";
+    static override task = "automatic-speech-recognition";
     static override model: string | undefined = undefined;
     static override quantized: boolean | null = null;
 }
 
-self.addEventListener("message", async (event: MessageEvent) => {
-    console.log('[Worker] Received message:', event.data);
+// ==================== WORKER HANDLER ====================
+self.addEventListener("message", async (event: MessageEvent<WorkerMessage>) => {
     try {
         const message = event.data;
-        // Handle status check
+
         if (message.type === 'status') {
-            const model = AutomaticSpeechRecognitionPipelineFactory.model || 'Xenova/whisper-tiny';
             self.postMessage({
                 status: "ready",
                 task: "automatic-speech-recognition",
-                model,
+                model: AutomaticSpeechRecognitionPipelineFactory.model || 'Xenova/whisper-tiny',
             });
             return;
         }
-        // Only proceed if audio is present
+
         if (!message.audio) {
-            self.postMessage({
-                status: "error",
-                task: "automatic-speech-recognition",
-                data: "No audio provided for transcription."
-            });
-            return;
+            throw new TranscriptionError("No audio provided for transcription");
         }
-        console.log(`[Worker] Starting transcription | Model: ${message.model} | Language: ${message.language}`);
-        if (message.audio) {
-            console.log('[Worker] Audio type:', Object.prototype.toString.call(message.audio), 'Length:', message.audio.byteLength || message.audio.length);
+
+        log(LOG_LEVEL.INFO, "Starting transcription", {
+            model: message.model,
+            language: message.language,
+            audioLength: message.audio.byteLength || message.audio.length
+        });
+
+        const transcript = await transcribe({
+            audio: message.audio,
+            model: message.model || 'Xenova/whisper-tiny',
+            multilingual: message.multilingual || false,
+            quantized: message.quantized || false,
+            subtask: message.subtask || 'transcribe',
+            language: message.language || undefined
+        });
+
+        if (!transcript) {
+            throw new TranscriptionError("Transcription returned null");
         }
-        let transcript = await transcribe(
-            message.audio,
-            message.model,
-            message.multilingual,
-            message.quantized,
-            message.subtask,
-            message.language,
-        );
-        if (transcript === null) {
-            console.error('[Worker] Transcription returned null');
-            self.postMessage({
-                status: "error",
-                task: "automatic-speech-recognition",
-                data: 'Transcription failed or returned null.'
-            });
-            return;
-        }
-        console.log('[Worker] Transcription complete:', transcript);
+
+        log(LOG_LEVEL.DEBUG, "Transcription complete", transcript);
         self.postMessage({
             status: "complete",
             task: "automatic-speech-recognition",
             data: transcript,
         });
     } catch (err) {
-        console.error('[Worker] Error during transcription:', err);
+        const error = err instanceof TranscriptionError
+            ? err
+            : new TranscriptionError('Transcription failed', err instanceof Error ? err.message : String(err));
+
+        log(LOG_LEVEL.ERROR, error.message, error.details);
         self.postMessage({
             status: "error",
             task: "automatic-speech-recognition",
-            data: err instanceof Error ? err.message : String(err),
+            error: {
+                message: error.message,
+                details: error.details
+            }
         });
     }
 });
 
+// ==================== CORE TRANSCRIPTION ====================
 export const transcribe = async (
-    audio: any,
-    model: string,
-    multilingual: boolean,
-    quantized: boolean,
-    subtask: string,
-    language: string,
-): Promise<any> => {
-    // Allowed model names:
-    // 'Xenova/whisper-tiny', 'Xenova/whisper-base', 'Xenova/whisper-small', 'Xenova/whisper-medium',
-    // 'distil-whisper/distil-medium.en', 'distil-whisper/distil-large-v2'
-    // Use the model name as provided.
-    let modelName = model;
-    const isDistilWhisper = typeof model === "string" && model.startsWith("distil-whisper/");
+    config: TranscriptionConfig
+): Promise<TranscriptionOutput | null> => {
+    // Reset progress state for new transcription
+    progressState.startTime = null;
+    progressState.lastProgress = 0;
+    progressState.smoothedProgress = 0;
+
+    const isDistilWhisper = config.model.startsWith("distil-whisper/");
     const p = AutomaticSpeechRecognitionPipelineFactory;
-    if (p.model !== modelName || p.quantized !== quantized) {
-        p.model = modelName;
-        p.quantized = quantized;
-        if (p.instance !== null) {
-            (await p.getInstance()).dispose();
-            p.instance = null;
-        }
+
+    // Handle model switching
+    if (p.model !== config.model || p.quantized !== config.quantized) {
+        await p.cleanup();
+        p.model = config.model;
+        p.quantized = config.quantized;
     }
-    let transcriber: any = await p.getInstance((data: any) => {
+
+    const transcriber = await p.getInstance((data: any) => {
         self.postMessage(data);
     });
-    const time_precision =
-        transcriber.processor.feature_extractor.config.chunk_length /
+
+    const time_precision = transcriber.processor.feature_extractor.config.chunk_length /
         transcriber.model.config.max_source_positions;
 
-    // Storage for chunks to be processed. Initialise with an empty chunk.
-    let chunks_to_process: Array<{ tokens: any[]; finalised: boolean }> = [
-        {
-            tokens: [],
-            finalised: false,
-        },
-    ];
+    let chunks_to_process: TranscriptionChunk[] = [{
+        tokens: [],
+        finalised: false
+    }];
 
-    function chunk_callback(chunk: any) {
-        let last = chunks_to_process[chunks_to_process.length - 1];
+    const chunk_callback = (chunk: any) => {
+        const last = chunks_to_process[chunks_to_process.length - 1];
         Object.assign(last, chunk);
         last.finalised = true;
+
         if (!chunk.is_last) {
             chunks_to_process.push({
                 tokens: [],
-                finalised: false,
+                finalised: false
             });
         }
-    }
 
-    let updateCount = 0;
-    function callback_function(item: any) {
-        const now = Date.now();
-        if (!progressState.lastUpdateTime || 
-            now - progressState.lastUpdateTime >= progressState.updateInterval) {
-            
-            let last = chunks_to_process[chunks_to_process.length - 1];
-            last.tokens = [...item[0].output_token_ids];
-            
-            const {
-                progress,
-                timeElapsed,
-                estimatedTotal
-            } = calculateProgress(chunks_to_process, progressState);
-            
-            const data = transcriber.tokenizer._decode_asr(chunks_to_process, {
-                time_precision: time_precision,
+        // Cleanup old chunks
+        if (chunks_to_process.length > DEFAULT_CONFIG.maxRetainedChunks) {
+            chunks_to_process = chunks_to_process.slice(-DEFAULT_CONFIG.maxRetainedChunks);
+        }
+    };
+
+    const callback_function = (item: any) => {
+        const now = performance.now();
+        if (progressState.lastUpdateTime &&
+            now - progressState.lastUpdateTime < progressState.updateInterval) {
+            return;
+        }
+
+        const last = chunks_to_process[chunks_to_process.length - 1];
+        last.tokens = [...item[0].output_token_ids];
+
+        const progressData = calculateProgress(chunks_to_process, progressState);
+        if (!progressData) return;
+
+        const output = chunks_to_process.some(c => c.finalised)
+            ? transcriber.tokenizer._decode_asr(chunks_to_process, {
+                time_precision,
                 return_timestamps: true,
                 force_full_sequences: false,
-            });
-            
-            self.postMessage({
-                status: "update",
-                task: "automatic-speech-recognition",
-                data: data,
-                progress: progress,
-                time: {
-                    elapsed: timeElapsed,
-                    remaining: estimatedTotal ? estimatedTotal - timeElapsed : null
-                }
-            });
-            
-            progressState.lastUpdateTime = now;
-        }
-    }
+            })
+            : null;
 
-    let output = await transcriber(audio, {
-        top_k: 0,
-        do_sample: false,
-        chunk_length_s: isDistilWhisper ? 20 : 30,
-        stride_length_s: isDistilWhisper ? 3 : 5,
-        language: language,
-        task: subtask,
-        return_timestamps: true,
-        force_full_sequences: false,
-        callback_function: callback_function,
-        chunk_callback: chunk_callback,
-    }).catch((error: any) => {
         self.postMessage({
-            status: "error",
+            status: "update",
             task: "automatic-speech-recognition",
-            data: error,
+            data: output,
+            progress: progressData.progress,
+            time: {
+                elapsed: progressData.timeElapsed,
+                remaining: progressData.estimatedTotal
+                    ? Math.max(0, progressData.estimatedTotal - progressData.timeElapsed)
+                    : null
+            }
         });
-        return null;
-    });
-    return output;
+
+        progressState.lastUpdateTime = now;
+    };
+
+    try {
+        return await transcriber(config.audio, {
+            top_k: 0,
+            do_sample: false,
+            chunk_length_s: isDistilWhisper ? 20 : 30,
+            stride_length_s: isDistilWhisper ? 3 : 5,
+            language: config.language,
+            task: config.subtask,
+            return_timestamps: true,
+            force_full_sequences: false,
+            callback_function,
+            chunk_callback,
+        });
+    } catch (error) {
+        throw new TranscriptionError("Transcription failed", error);
+    }
 };
