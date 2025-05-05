@@ -3,6 +3,57 @@ import { pipeline, env } from "@xenova/transformers";
 
 env.allowLocalModels = false;
 
+// Add these at the top of your file
+interface ProgressState {
+    startTime: number | null;
+    lastUpdateTime: number | null;
+    smoothedProgress: number;
+    updateInterval: number; // ms between progress updates
+}
+
+const progressState: ProgressState = {
+    startTime: null,
+    lastUpdateTime: null,
+    smoothedProgress: 0,
+    updateInterval: 200 // Update every 200ms max
+};
+
+function calculateProgress(
+    chunks: Array<{ finalised: boolean }>,
+    state: ProgressState
+): {
+    progress: number;
+    timeElapsed: number;
+    estimatedTotal: number | null;
+} {
+    const now = Date.now();
+    if (!state.startTime) state.startTime = now;
+    
+    const finalized = chunks.filter(c => c.finalised).length;
+    const total = chunks.length;
+    
+    // Weighted average favoring recent chunks
+    const rawProgress = total > 0 
+        ? Math.min(100, (finalized / (total * 0.9)) * 100) 
+        : 0;
+    
+    // Smooth progress to avoid jumps
+    state.smoothedProgress = 0.7 * state.smoothedProgress + 0.3 * rawProgress;
+    
+    // Calculate time estimates
+    const elapsed = (now - state.startTime) / 1000;
+    let estimate = null;
+    if (state.smoothedProgress > 5) {
+        estimate = elapsed / (state.smoothedProgress / 100);
+    }
+    
+    return {
+        progress: Math.round(state.smoothedProgress),
+        timeElapsed: Math.round(elapsed),
+        estimatedTotal: estimate ? Math.round(estimate) : null
+    };
+}
+
 // Define model factories
 // Ensures only one model is created of each type
 export class PipelineFactory {
@@ -62,7 +113,7 @@ self.addEventListener("message", async (event: MessageEvent) => {
             });
             return;
         }
-        console.log('[Worker] Starting transcription...');
+        console.log(`[Worker] Starting transcription | Model: ${message.model} | Language: ${message.language}`);
         if (message.audio) {
             console.log('[Worker] Audio type:', Object.prototype.toString.call(message.audio), 'Length:', message.audio.byteLength || message.audio.length);
         }
@@ -149,19 +200,40 @@ export const transcribe = async (
         }
     }
 
+    let updateCount = 0;
     function callback_function(item: any) {
-        let last = chunks_to_process[chunks_to_process.length - 1];
-        last.tokens = [...item[0].output_token_ids];
-        let data = transcriber.tokenizer._decode_asr(chunks_to_process, {
-            time_precision: time_precision,
-            return_timestamps: true,
-            force_full_sequences: false,
-        });
-        self.postMessage({
-            status: "update",
-            task: "automatic-speech-recognition",
-            data: data,
-        });
+        const now = Date.now();
+        if (!progressState.lastUpdateTime || 
+            now - progressState.lastUpdateTime >= progressState.updateInterval) {
+            
+            let last = chunks_to_process[chunks_to_process.length - 1];
+            last.tokens = [...item[0].output_token_ids];
+            
+            const {
+                progress,
+                timeElapsed,
+                estimatedTotal
+            } = calculateProgress(chunks_to_process, progressState);
+            
+            const data = transcriber.tokenizer._decode_asr(chunks_to_process, {
+                time_precision: time_precision,
+                return_timestamps: true,
+                force_full_sequences: false,
+            });
+            
+            self.postMessage({
+                status: "update",
+                task: "automatic-speech-recognition",
+                data: data,
+                progress: progress,
+                time: {
+                    elapsed: timeElapsed,
+                    remaining: estimatedTotal ? estimatedTotal - timeElapsed : null
+                }
+            });
+            
+            progressState.lastUpdateTime = now;
+        }
     }
 
     let output = await transcriber(audio, {
