@@ -1,13 +1,21 @@
 <script lang="ts">
   import AudioManager from "./lib/AudioManager.svelte";
-  import { createTranscriber } from "./lib/transcriber";
+  import { createTranscriber, type SupportedModel } from "./lib/transcriber";
   import { get } from "svelte/store";
 
   const transcriber = createTranscriber();
   const supportedModels = transcriber.supportedModels;
   const workerStatus = transcriber.workerStatus;
 
-  let selectedModel = supportedModels[0].id;
+  let selectedModel: SupportedModel = "Xenova/whisper-base";
+
+  // Load initial model
+  transcriber.loadModel(selectedModel);
+
+  // Handle model changes
+  $: if (selectedModel) {
+    transcriber.loadModel(selectedModel);
+  }
 </script>
 
 <main class="app-root">
@@ -26,17 +34,17 @@
     </select>
     <span class="status-text">
       {$workerStatus.status === "loading"
-        ? "Loading..."
+        ? `Loading model... ${$workerStatus.message || ""}`
         : $workerStatus.status === "ready"
           ? `Ready: ${$workerStatus.model}`
           : $workerStatus.status === "transcribing"
-            ? "Transcribing..."
+            ? "Transcribing audio..."
             : $workerStatus.status === "error"
               ? `Error: ${$workerStatus.message}`
               : $workerStatus.status === "complete"
-                ? "Done"
-                : ""}
-    </span>
+                ? "Transcription complete"
+                : "Initializing..."}</span
+    >
   </div>
   <section class="main-content">
     <AudioManager {transcriber} model={selectedModel} />
@@ -85,6 +93,7 @@
   .status-text {
     font-weight: 500;
     color: #374151;
+    margin-inline-start: auto;
   }
   .main-content {
     flex: 1;

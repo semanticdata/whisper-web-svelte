@@ -1,15 +1,31 @@
 import { writable, type Writable } from 'svelte/store';
 
+export type SupportedModel =
+  | 'Xenova/whisper-tiny'
+  | 'Xenova/whisper-base'
+  | 'Xenova/whisper-small'
+  | 'Xenova/whisper-medium'
+  | 'distil-whisper/distil-medium.en'
+  | 'distil-whisper/distil-large-v2'
+  | 'Xenova/whisper-large-v3';
+
 export interface TranscriberData {
   isBusy: boolean;
   text: string;
   chunks: { text: string; timestamp: [number, number | null] }[];
 }
 
+export interface TranscriberModel {
+  id: SupportedModel;
+  name: string;
+  languages: string[];
+  recommended: boolean;
+}
+
 export interface Transcriber {
   transcript: Writable<TranscriberData | undefined>;
   isBusy: Writable<boolean>;
-  transcribe: (file: File, model?: string, language?: string) => Promise<void>;
+  transcribe: (file: File, model?: SupportedModel, language?: string) => Promise<void>;
 }
 
 export interface WorkerStatus {
@@ -19,7 +35,7 @@ export interface WorkerStatus {
 }
 
 // Supported models (all free, no API key needed)
-export const SUPPORTED_MODELS = [
+export const SUPPORTED_MODELS: TranscriberModel[] = [
   {
     id: 'Xenova/whisper-tiny',
     name: 'Whisper Tiny',
@@ -62,9 +78,7 @@ export const SUPPORTED_MODELS = [
     languages: ['multilingual'],
     recommended: false // Very large model
   }
-] as const;
-
-export type SupportedModel = typeof SUPPORTED_MODELS[number]['id'];
+];
 
 function decodeAudioFile(file: File): Promise<Float32Array> {
   return new Promise((resolve, reject) => {
@@ -182,7 +196,7 @@ export function createTranscriber(): Transcriber & {
     worker.postMessage({ type: 'status' });
   }
 
-  async function loadModel(model: SupportedModel = 'Xenova/whisper-tiny') {
+  async function loadModel(model: SupportedModel = 'Xenova/whisper-base') {
     if (!worker) throw new Error('Transcriber worker not available');
     workerStatus.set({ status: 'loading', message: 'Loading model...', model });
     worker.postMessage({ type: 'load-model', model, quantized: true });
@@ -190,7 +204,7 @@ export function createTranscriber(): Transcriber & {
 
   async function transcribe(
     file: File,
-    model: SupportedModel = 'Xenova/whisper-tiny',
+    model: SupportedModel = 'Xenova/whisper-base',
     language: string = 'en'
   ) {
     if (!worker) {

@@ -172,14 +172,14 @@ self.addEventListener("message", async (event: MessageEvent<WorkerMessage>) => {
             self.postMessage({
                 status: "ready",
                 task: "automatic-speech-recognition",
-                model: AutomaticSpeechRecognitionPipelineFactory.model || 'Xenova/whisper-tiny',
+                model: AutomaticSpeechRecognitionPipelineFactory.model || 'Xenova/whisper-base',
             });
             return;
         }
 
         // NEW: Handle model preloading
         if (message.type === 'load-model') {
-            const modelId = message.model || 'Xenova/whisper-tiny';
+            const modelId = message.model || 'Xenova/whisper-base';
             const quantized = message.quantized ?? true;
             const multilingual = message.multilingual ?? false;
             // Clean up and set new model
@@ -208,7 +208,7 @@ self.addEventListener("message", async (event: MessageEvent<WorkerMessage>) => {
 
         const transcript = await transcribe({
             audio: message.audio,
-            model: message.model || 'Xenova/whisper-tiny',
+            model: message.model || 'Xenova/whisper-base',
             multilingual: message.multilingual || false,
             quantized: message.quantized || false,
             subtask: message.subtask || 'transcribe',

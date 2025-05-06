@@ -34,7 +34,7 @@
         </div>
       {/if}
     {:else}
-      <p>No transcript yet. Please upload a file.</p>
+      <p>No transcript yet.</p>
     {/if}
   </div>
   {#if $transcribedData && !$transcribedData.isBusy && $transcribedData.text}

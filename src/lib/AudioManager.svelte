@@ -2,13 +2,13 @@
   import { onMount } from "svelte";
   import Transcript from "./Transcript.svelte";
   import AnnotateTranscript from "./AnnotateTranscript.svelte";
-  import type { Transcriber } from "../lib/transcriber";
+  import type { Transcriber, SupportedModel } from "../lib/transcriber";
   import { handleAudioFile, clearAudioState } from "./audioUtils";
 
   export let transcriber: ReturnType<
     typeof import("../lib/transcriber").createTranscriber
   >;
-  export let model: string = "Xenova/whisper-tiny";
+  export let model: SupportedModel = "Xenova/whisper-base";
   const { isBusy, transcript } = transcriber;
   const workerStatus = transcriber.workerStatus;
 
@@ -21,8 +21,7 @@
     const input = event.target as HTMLInputElement;
     if (input.files && input.files.length > 0) {
       audioFile = input.files[0];
-      audioUrl = await handleAudioFile(audioFile, audioUrl, handleTranscribe);
-      // Do not transcribe automatically
+      audioUrl = await handleAudioFile(audioFile, audioUrl);
     }
   }
 
@@ -52,8 +51,7 @@
       const file = event.dataTransfer.files[0];
       if (file && file.type.startsWith("audio/")) {
         audioFile = file;
-        audioUrl = await handleAudioFile(audioFile, audioUrl, handleTranscribe);
-        // Do not transcribe automatically
+        audioUrl = await handleAudioFile(audioFile, audioUrl);
       }
     }
   }
@@ -106,10 +104,15 @@
         class="ml-2 file-upload-btn"
         disabled={$isBusy ||
           !$workerStatus ||
-          $workerStatus.status === "loading"}
+          $workerStatus.status === "loading" ||
+          $workerStatus.status === "transcribing"}
       >
-        {#if $isBusy}
+        {#if $workerStatus.status === "loading"}
+          Loading Model...
+        {:else if $workerStatus.status === "transcribing"}
           Transcribing...
+        {:else if $workerStatus.status === "error"}
+          Retry Transcription
         {:else}
           Transcribe
         {/if}
@@ -121,17 +124,6 @@
   {:else}
     <Transcript transcribedData={transcript} />
   {/if}
-  <div class="worker-status">
-    {#if $workerStatus.status === "loading"}
-      <div>Loading model...</div>
-    {:else if $workerStatus.status === "ready"}
-      <div>Model ready: {$workerStatus.model}</div>
-    {:else if $workerStatus.status === "transcribing"}
-      <div>Transcribing...</div>
-    {:else if $workerStatus.status === "error"}
-      <div class="error">Error: {$workerStatus.message}</div>
-    {/if}
-  </div>
 </div>
 
 <style>
@@ -153,7 +145,6 @@
     align-items: center;
     justify-content: center;
     background: #23233a;
-    /* margin-bottom: 1rem; */
     transition:
       border-color 0.25s,
       background 0.25s;
@@ -210,8 +201,5 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
-  }
-  .worker-status {
-    color: #374151;
   }
 </style>

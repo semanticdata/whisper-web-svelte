@@ -13,16 +13,11 @@ export function revokeAudioUrl(url: string | null) {
 export async function handleAudioFile(
   file: File,
   currentUrl: string | null,
-  onTranscribe: (file: File) => Promise<void>
 ): Promise<string> {
   if (currentUrl) {
     revokeAudioUrl(currentUrl);
   }
-  const url = createAudioUrl(file);
-  if (typeof onTranscribe === 'function') {
-    await onTranscribe(file);
-  }
-  return url;
+  return createAudioUrl(file);
 }
 
 export function clearAudioState(
