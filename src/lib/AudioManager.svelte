@@ -110,13 +110,20 @@
         {#if $workerStatus.status === "loading"}
           Loading Model...
         {:else if $workerStatus.status === "transcribing"}
-          Transcribing...
+          {$transcript?.progress
+            ? `Transcribing ${Math.round($transcript.progress.percent)}% (${$transcript.progress.elapsed}s)`
+            : "Transcribing..."}
         {:else if $workerStatus.status === "error"}
           Retry Transcription
         {:else}
           Transcribe
         {/if}
       </button>
+      {#if $transcript?.progress && $transcript.progress.remaining}
+        <div class="progress-info">
+          ~{Math.round($transcript.progress.remaining)}s remaining
+        </div>
+      {/if}
     </div>
   {/if}
   {#if $isBusy || ($transcript && !$isBusy && $transcript.text)}
@@ -201,5 +208,10 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+  }
+  .progress-info {
+    color: #888;
+    font-size: 0.9em;
+    margin-left: 1rem;
   }
 </style>

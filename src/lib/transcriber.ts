@@ -13,6 +13,11 @@ export interface TranscriberData {
   isBusy: boolean;
   text: string;
   chunks: { text: string; timestamp: [number, number | null] }[];
+  progress?: {
+    percent: number;
+    elapsed: number;
+    remaining: number | null;
+  };
 }
 
 export interface TranscriberModel {
@@ -128,7 +133,7 @@ export function createTranscriber(): Transcriber & {
 
   if (worker) {
     worker.onmessage = (event: MessageEvent) => {
-      const { status, data = {}, model, error } = event.data;
+      const { status, data = {}, model, error, progress, time } = event.data;
 
       switch (status) {
         case 'ready':
@@ -161,11 +166,16 @@ export function createTranscriber(): Transcriber & {
               isBusy: true,
               text: Array.isArray(data) ? (data[0] || '') : (data.text || ''),
               chunks: Array.isArray(data) && data[1]?.chunks ? data[1].chunks : (data.chunks || []),
+              progress: {
+                percent: progress || 0,
+                elapsed: time?.elapsed || 0,
+                remaining: time?.remaining || null
+              }
             });
           }
           workerStatus.set({
             status: 'transcribing',
-            message: 'Transcribing...',
+            message: `Transcribing... ${progress ? Math.round(progress) + '%' : ''}`,
             model
           });
           break;
