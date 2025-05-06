@@ -143,7 +143,7 @@
   }
   .drop-zone {
     width: 100%;
-    max-width: 400px;
+    max-width: var(--main-width);
     min-height: 120px;
     border: 2px dashed #646cff;
     border-radius: 10px;
@@ -156,6 +156,7 @@
       border-color 0.25s,
       background 0.25s;
     outline: none;
+    padding: 1rem;
   }
   .drop-zone.drag-over {
     border-color: #2323a3;
@@ -169,8 +170,8 @@
   .audio-controls {
     margin: 1rem 0;
     display: flex;
-    align-items: center;
-    gap: 1rem;
+    justify-content: space-between;
+    width: var(--main-width);
   }
   .audio-controls audio {
     border-radius: 10px;

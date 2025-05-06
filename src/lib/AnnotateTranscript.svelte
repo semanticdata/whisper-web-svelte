@@ -55,7 +55,7 @@
 
 <style>
   .annotate-container {
-    width: 500px;
+    width: var(--main-width);
     margin: 0 auto;
     background: #fff;
     border-radius: 10px;
