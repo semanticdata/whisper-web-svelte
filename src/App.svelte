@@ -25,11 +25,17 @@
       {/each}
     </select>
     <span class="status-text">
-      {$workerStatus.status === 'loading' ? 'Loading...' :
-        $workerStatus.status === 'ready' ? `Ready: ${$workerStatus.model}` :
-        $workerStatus.status === 'transcribing' ? 'Transcribing...' :
-        $workerStatus.status === 'error' ? `Error: ${$workerStatus.message}` :
-        $workerStatus.status === 'complete' ? 'Done' : ''}
+      {$workerStatus.status === "loading"
+        ? "Loading..."
+        : $workerStatus.status === "ready"
+          ? `Ready: ${$workerStatus.model}`
+          : $workerStatus.status === "transcribing"
+            ? "Transcribing..."
+            : $workerStatus.status === "error"
+              ? `Error: ${$workerStatus.message}`
+              : $workerStatus.status === "complete"
+                ? "Done"
+                : ""}
     </span>
   </div>
   <section class="main-content">
@@ -38,7 +44,8 @@
   <footer class="footer">
     Made with <a
       class="underline"
-      href="https://github.com/xenova/transformers.js">🤗 Transformers.js</a>
+      href="https://github.com/xenova/transformers.js">🤗 Transformers.js</a
+    >
   </footer>
 </main>
 

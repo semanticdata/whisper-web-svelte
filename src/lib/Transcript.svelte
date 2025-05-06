@@ -39,7 +39,9 @@
   </div>
   {#if $transcribedData && !$transcribedData.isBusy && $transcribedData.text}
     <div class="transcript-actions">
-      <button on:click={handleExportTXT} class="file-upload-btn">Export TXT</button>
+      <button on:click={handleExportTXT} class="file-upload-btn"
+        >Export TXT</button
+      >
       <button on:click={handleExportJSON} class="file-upload-btn ml-2"
         >Export JSON</button
       >
