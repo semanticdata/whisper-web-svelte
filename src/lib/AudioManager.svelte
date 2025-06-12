@@ -99,26 +99,38 @@
     <div class="audio-controls">
       <audio bind:this={audioPlayer} src={audioUrl} controls></audio>
       <button on:click={clearAudio} class="ml-2 file-upload-btn">Clear</button>
-      <button
-        on:click={handleTranscribe}
-        class="ml-2 file-upload-btn"
-        disabled={$isBusy ||
-          !$workerStatus ||
-          $workerStatus.status === "loading" ||
-          $workerStatus.status === "transcribing"}
-      >
-        {#if $workerStatus.status === "loading"}
-          Loading Model...
-        {:else if $workerStatus.status === "transcribing"}
-          {$transcript?.progress
-            ? `Transcribing ${Math.round($transcript.progress.percent)}% (${$transcript.progress.elapsed}s)`
-            : "Transcribing..."}
-        {:else if $workerStatus.status === "error"}
-          Retry Transcription
-        {:else}
-          Transcribe
+      <div class="transcribe-button-container">
+        <button
+          on:click={handleTranscribe}
+          class="file-upload-btn transcribe-button"
+          disabled={!audioFile ||
+            ($isBusy && $workerStatus.status !== "error") ||
+            !$workerStatus ||
+            ($workerStatus.status === "loading" && !$isBusy) || // Disable if loading model and not already busy with transcription
+            ($workerStatus.status === "transcribing" && $isBusy)}
+        >
+          {#if $workerStatus.status === "loading" && !$isBusy}
+            Loading Model...
+          {:else if $workerStatus.status === "transcribing" && $isBusy}
+            {$transcript?.progress
+              ? `Transcribing ${Math.round($transcript.progress.percent)}% (${$transcript.progress.elapsed}s)`
+              : "Transcribing..."}
+          {:else if $workerStatus.status === "error"}
+            Retry Transcription
+          {:else}
+            Transcribe
+          {/if}
+        </button>
+        {#if $isBusy && ($workerStatus.status === "transcribing" || ($workerStatus.status === "loading" && $isBusy))}
+          <button
+            on:click={() => transcriber.cancelTranscription()}
+            class="cancel-button"
+            aria-label="Cancel transcription"
+          >
+            Cancel
+          </button>
         {/if}
-      </button>
+      </div>
       {#if $transcript?.progress && $transcript.progress.remaining}
         <div class="progress-info">
           ~{Math.round($transcript.progress.remaining)}s remaining
@@ -170,8 +182,15 @@
   .audio-controls {
     margin: 1rem 0;
     display: flex;
+    align-items: center; /* Align items vertically */
     justify-content: space-between;
     width: var(--main-width);
+    gap: 0.5rem; /* Add some gap between buttons */
+  }
+
+  .transcribe-button-container {
+    display: flex;
+    align-items: center;
   }
   .audio-controls audio {
     border-radius: 10px;
@@ -195,6 +214,19 @@
   }
   .ml-2 {
     margin-left: 0.5rem;
+  }
+  .cancel-button {
+    background-color: #ef4444; /* Tailwind red-500 */
+    color: white;
+    border: none;
+    padding: 0.4em 0.8em;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9em;
+    margin-left: 0.5rem;
+  }
+  .cancel-button:hover {
+    background-color: #dc2626; /* Tailwind red-600 */
   }
   .hidden {
     display: none;

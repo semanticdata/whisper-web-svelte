@@ -107,7 +107,8 @@ function decodeAudioFile(file: File): Promise<Float32Array> {
 export function createTranscriber(): Transcriber & {
   workerStatus: Writable<WorkerStatus>;
   supportedModels: typeof SUPPORTED_MODELS;
-  loadModel: (model?: SupportedModel) => Promise<void>;
+  loadModel: (model?: SupportedModel, quantized?: boolean, multilingual?: boolean) => Promise<void>;
+  cancelTranscription: () => void;
 } {
   const transcript = writable<TranscriberData | undefined>(undefined);
   const isBusy = writable(false);
@@ -180,6 +181,17 @@ export function createTranscriber(): Transcriber & {
           });
           break;
 
+        case 'cancelled':
+          isBusy.set(false);
+          workerStatus.set({
+            status: 'ready', // Or a new 'cancelled' status if you prefer more specific UI handling
+            message: 'Transcription cancelled.',
+            model: model // Keep the current model context
+          });
+          // Optionally clear partial transcript data
+          // transcript.set(undefined);
+          break;
+
         case 'error':
           console.error('Worker error:', error);
           isBusy.set(false);
@@ -199,53 +211,137 @@ export function createTranscriber(): Transcriber & {
             });
           }
           break;
+
+        default:
+          // For model loading progress or other messages
+          // The 'progress' status from the worker now directly includes model name and file
+          // if (data && data.status === 'progress') { // This specific check might be redundant if 'progress' case handles it
+          //   workerStatus.set({
+          //     status: 'loading',
+          //     message: `Downloading model (${data.file || 'unknown'}: ${data.progress || 0}%)`,
+          //     model: data.name
+          //   });
+          // }
+          break;
       }
     };
 
-    // Check worker status on load
+    // Initial status check
     worker.postMessage({ type: 'status' });
   }
 
-  async function loadModel(model: SupportedModel = 'Xenova/whisper-base') {
-    if (!worker) throw new Error('Transcriber worker not available');
-    workerStatus.set({ status: 'loading', message: 'Loading model...', model });
-    worker.postMessage({ type: 'load-model', model, quantized: true });
+  function cancelTranscription() {
+    if (worker) {
+      console.log('Attempting to cancel transcription...');
+      worker.postMessage({ type: 'cancel' });
+    }
   }
 
-  async function transcribe(
-    file: File,
-    model: SupportedModel = 'Xenova/whisper-base',
-    language: string = 'en'
-  ) {
+  const loadModel = async (modelId: SupportedModel = 'Xenova/whisper-base', quantized: boolean = true, multilingual: boolean = false) => {
+    if (!worker) return;
+    // Find the model details to determine if it's multilingual by default if not specified
+    const modelDetails = SUPPORTED_MODELS.find(m => m.id === modelId);
+    const isModelMultilingual = modelDetails ? modelDetails.languages.includes('multilingual') : multilingual;
+
+    workerStatus.set({ status: 'loading', message: `Loading model ${modelId || 'default'}...` });
+    worker?.postMessage({ type: 'loadModel', model: modelId, quantized, multilingual });
+  }
+
+  async function transcribe(file: File, model: SupportedModel = 'Xenova/whisper-base', language?: string) {
     if (!worker) {
-      throw new Error('Transcriber worker not available');
+      const errorMsg = 'Worker not initialized';
+      console.error(errorMsg);
+      workerStatus.set({ status: 'error', message: errorMsg });
+      return;
     }
 
+    console.log('Starting transcription with model:', model);
     isBusy.set(true);
-    transcript.set({ isBusy: true, text: '', chunks: [] });
-    workerStatus.set({
-      status: 'transcribing',
-      message: 'Starting transcription...'
-    });
+    transcript.set(undefined);
 
     try {
-      const audioBuffer = await decodeAudioFile(file);
-      const selectedModel = SUPPORTED_MODELS.find(m => m.id === model);
+      // Ensure the model is loaded first
+      const modelDetails = SUPPORTED_MODELS.find(m => m.id === model);
+      if (!modelDetails) {
+        throw new Error(`Model ${model} not found in supported models`);
+      }
+
+      const multilingual = modelDetails.languages.includes('multilingual');
+      const quantized = true;
+
+      console.log('Loading model:', { model, multilingual, quantized });
+      workerStatus.set({ status: 'loading', message: 'Loading model...' });
+
+      // Load the model and wait for it to be ready
+      await loadModel(model, quantized, multilingual);
+
+      // Wait for the worker to confirm the model is loaded
+      await new Promise<void>((resolve, reject) => {
+        console.log('Waiting for model to be ready...');
+        const timeout = setTimeout(() => {
+          unsubscribe();
+          reject(new Error('Model loading timed out after 30 seconds'));
+        }, 30000);
+
+        const unsubscribe = workerStatus.subscribe(status => {
+          if (status.status === 'ready' && status.model === model) {
+            console.log('Model ready, starting transcription');
+            clearTimeout(timeout);
+            unsubscribe();
+            resolve();
+          } else if (status.status === 'error') {
+            clearTimeout(timeout);
+            unsubscribe();
+            reject(new Error(status.message || 'Error loading model'));
+          }
+        });
+      });
+
+      // Now that the model is ready, process the audio
+      console.log('Decoding audio file...');
+      workerStatus.set({ status: 'transcribing', message: 'Preparing audio...' });
+      const audio = await decodeAudioFile(file);
+
+      console.log('Sending audio to worker for transcription...');
+      workerStatus.set({ status: 'transcribing', message: 'Transcribing...' });
+
+      console.log('Sending transcription request to worker', {
+        model,
+        multilingual,
+        quantized,
+        language,
+        audioLength: audio.length
+      });
 
       worker.postMessage({
-        audio: audioBuffer,
+        type: 'transcribe',  // Added missing type field
+        audio,
         model,
-        multilingual: selectedModel?.languages.includes('multilingual') || false,
-        quantized: true, // Use quantized models by default for better performance
-        subtask: language === 'en' ? 'transcribe' : 'translate',
-        language
+        multilingual,
+        quantized,
+        language,
+        subtask: 'transcribe'
       });
+
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('Transcription error:', errorMessage, err);
+
       isBusy.set(false);
       workerStatus.set({
         status: 'error',
-        message: err instanceof Error ? err.message : 'Failed to process audio'
+        message: `Transcription failed: ${errorMessage}`,
+        model
       });
+
+      transcript.set({
+        isBusy: false,
+        text: '',
+        chunks: [],
+        progress: undefined
+      });
+
+      // Re-throw to allow caller to handle the error if needed
       throw err;
     }
   }
@@ -256,6 +352,7 @@ export function createTranscriber(): Transcriber & {
     transcribe,
     workerStatus,
     supportedModels: SUPPORTED_MODELS,
-    loadModel
+    loadModel,
+    cancelTranscription
   };
 }

@@ -1,6 +1,11 @@
 <script lang="ts">
   import AudioManager from "./lib/AudioManager.svelte";
-  import { createTranscriber, type SupportedModel } from "./lib/transcriber";
+  import SettingsModal from "./lib/SettingsModal.svelte";
+  import {
+    createTranscriber,
+    type SupportedModel,
+    type TranscriberModel,
+  } from "./lib/transcriber";
   import { get } from "svelte/store";
 
   const transcriber = createTranscriber();
@@ -8,13 +13,23 @@
   const workerStatus = transcriber.workerStatus;
 
   let selectedModel: SupportedModel = "Xenova/whisper-base";
+  let quantized: boolean = true; // Default to quantized
+  let multilingual: boolean = false; // Default to not multilingual
+  let isSettingsModalOpen = false;
 
   // Load initial model
-  transcriber.loadModel(selectedModel);
+  transcriber.loadModel(selectedModel, quantized, multilingual);
 
-  // Handle model changes
-  $: if (selectedModel) {
-    transcriber.loadModel(selectedModel);
+  function handleSettingsChange(event: CustomEvent) {
+    selectedModel = event.detail.model;
+    quantized = event.detail.quantized;
+    multilingual = event.detail.multilingual;
+    transcriber.loadModel(selectedModel, quantized, multilingual);
+    isSettingsModalOpen = false;
+  }
+
+  function openSettingsModal() {
+    isSettingsModalOpen = true;
   }
 </script>
 
@@ -26,12 +41,13 @@
     </span>
   </header>
   <div class="model-status-bar">
-    <label for="model-select">Model:</label>
-    <select id="model-select" bind:value={selectedModel}>
-      {#each supportedModels as model}
-        <option value={model.id}>{model.name}</option>
-      {/each}
-    </select>
+    <button
+      on:click={openSettingsModal}
+      class="settings-button"
+      aria-label="Open settings"
+    >
+      ⚙️ Settings
+    </button>
     <span class="status-text">
       {$workerStatus.status === "loading"
         ? `Loading model... ${$workerStatus.message || ""}`
@@ -49,6 +65,16 @@
   <section class="main-content">
     <AudioManager {transcriber} model={selectedModel} />
   </section>
+
+  <SettingsModal
+    bind:isOpen={isSettingsModalOpen}
+    {supportedModels}
+    currentModel={selectedModel}
+    currentQuantized={quantized}
+    currentMultilingual={multilingual}
+    on:settingsChanged={handleSettingsChange}
+    on:close={() => (isSettingsModalOpen = false)}
+  />
   <footer class="footer">
     Made with <a
       class="underline"
@@ -89,6 +115,18 @@
     padding: 0.5rem 1rem;
     background: #f3f4f6;
     border-bottom: 1px solid #e2e8f0;
+  }
+  .settings-button {
+    background: none;
+    border: 1px solid #d1d5db; /* Tailwind gray-300 */
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: #374151; /* Tailwind gray-700 */
+  }
+  .settings-button:hover {
+    background-color: #e5e7eb; /* Tailwind gray-200 */
   }
   .status-text {
     font-weight: 500;
